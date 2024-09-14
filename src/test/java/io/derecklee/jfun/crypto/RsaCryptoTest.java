@@ -1,22 +1,29 @@
 package io.derecklee.jfun.crypto;
 
 import java.io.*;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.security.*;
+import java.security.cert.CertificateFactory;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Base64;
-import lombok.extern.slf4j.Slf4j;
-import org.junit.Test;
-
+import java.util.regex.Pattern;
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
+import lombok.extern.slf4j.Slf4j;
+import org.junit.Test;
 
+/**
+ * If You want to test RSA, you must generate keys correctly, using openssl commands and make sure
+ * that you have format private key as PKCS#8
+ *
+ * @author dereckleemj@gmail.com
+ */
 @Slf4j
 public class RsaCryptoTest {
-
-
 
   @Test
   public void testReadAndInit() {
@@ -25,13 +32,19 @@ public class RsaCryptoTest {
       String privateKeyPem = readPemFile("/private_key.pem");
 
       // Truncate the starting line and the ending line
-      byte[] publicKeyBytes = Base64
-              .getDecoder()
-              .decode(publicKeyPem.replaceAll("-----BEGIN PUBLIC KEY-----|-----END PUBLIC KEY-----", ""));
+      String truncatedPubKey =
+          publicKeyPem.replaceAll("-----BEGIN PUBLIC KEY-----|-----END PUBLIC KEY-----", "");
+      truncatedPubKey = truncatedPubKey.replaceAll("\n", "");
+      truncatedPubKey = truncatedPubKey.replaceAll("\r", "");
+      System.out.println("truncatedPubKey = " + truncatedPubKey);
+      byte[] publicKeyBytes = Base64.getDecoder().decode(truncatedPubKey);
 
-      byte[] privateKeyBytes = Base64
-              .getDecoder()
-              .decode(privateKeyPem.replaceAll("-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----", ""));
+      String truncatedPriKey =
+          privateKeyPem.replaceAll("-----BEGIN PRIVATE KEY-----|-----END PRIVATE KEY-----", "");
+      truncatedPriKey = truncatedPriKey.replaceAll("\n", "");
+      truncatedPriKey = truncatedPriKey.replaceAll("\r", "");
+      System.out.println("truncatedPriKey = " + truncatedPriKey);
+      byte[] privateKeyBytes = Base64.getDecoder().decode(truncatedPriKey);
 
       // Get pub key: ASN.1 encoding of a public key
       X509EncodedKeySpec pubKeySpec = new X509EncodedKeySpec(publicKeyBytes);
@@ -47,6 +60,33 @@ public class RsaCryptoTest {
     } catch (Exception e) {
       log.error("", e);
     }
+  }
+
+  private byte[] loadPemFileContent(String resource) throws IOException {
+    URL url = getClass().getResource(resource);
+    InputStream in = url.openStream();
+    String pem = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+    Pattern parse = Pattern.compile("(?m)(?s)^---*BEGIN.*---*$(.*)^---*END.*---*$.*");
+    String encoded = parse.matcher(pem).replaceFirst("$1");
+    log.debug(">> Loaded file: " + encoded);
+    return Base64.getMimeDecoder().decode(encoded);
+  }
+
+  @Test
+  public void testLoadRsaPemFiles() throws Exception {
+    KeyFactory kf = KeyFactory.getInstance("RSA");
+
+    CertificateFactory cf = CertificateFactory.getInstance("X.509");
+
+    // ------------------ How to gen RSA KEYS -------------------------
+    // openssl genrsa -out private.pem 1024
+    // openssl pkcs8 -topk8 -inform PEM -in private.pem -out private_key.pem -nocrypt
+    PrivateKey key = kf.generatePrivate(new PKCS8EncodedKeySpec(loadPemFileContent("/private_key.pem")));
+
+    // openssl rsa -in private.pem -pubout -outform PEM -out public_key.pem
+    PublicKey pub = kf.generatePublic(new X509EncodedKeySpec(loadPemFileContent("/public_key.pem")));
+
+    // Certificate crt = cf.generateCertificate(getClass().getResourceAsStream("test.crt"));
   }
 
   /**
@@ -78,6 +118,7 @@ public class RsaCryptoTest {
   public void genAndSaveAsPemFiles() {
     try {
       KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+
       keyPairGenerator.initialize(2048, new SecureRandom());
       KeyPair keyPair = keyPairGenerator.generateKeyPair();
 
@@ -88,7 +129,8 @@ public class RsaCryptoTest {
       byte[] publicKeyBytes = publicKey.getEncoded();
       String publicKeyPem = Base64.getEncoder().encodeToString(publicKeyBytes);
 
-      byte[] privateKeyBytes = privateKey.getEncoded();
+      PKCS8EncodedKeySpec privateKeySpec = new PKCS8EncodedKeySpec(privateKey.getEncoded());
+      byte[] privateKeyBytes = privateKeySpec.getEncoded();
       String privateKeyPem = Base64.getEncoder().encodeToString(privateKeyBytes);
 
       // Save keys to PEM files
@@ -105,14 +147,12 @@ public class RsaCryptoTest {
       }
 
       log.info("RSA key pair generated and saved as PEM files.");
-    } catch (NoSuchAlgorithmException e) {
-      log.error(">> Invalid algorithm name ", e);
-    } catch (IOException e) {
+    } catch (NoSuchAlgorithmException | IOException e) {
       log.error("", e);
     }
   }
 
-  /** Optional key size: 1024,2048 */
+  /** Optional key size: 1024,2048,4096 */
   @Test
   public void genKeys() {
     try {
@@ -123,16 +163,13 @@ public class RsaCryptoTest {
       PublicKey publicKey = keyPair.getPublic();
       PrivateKey privateKey = keyPair.getPrivate();
 
+      // Way more things to be done
+
       log.info("PublicKey ->{}", publicKey);
       log.info("PrivateKey->{}", privateKey);
     } catch (NoSuchAlgorithmException e) {
       log.error("RSA error", e);
     }
-  }
-
-  @Test
-  public void testInitKeysFromPEMFiles() {
-
   }
 
   @Test
@@ -172,20 +209,4 @@ public class RsaCryptoTest {
       log.error("RSA error ", e);
     }
   }
-
-  @Test
-  public void test() {
-    try {
-      // Read PEM files and create key objects (see previous code)
-
-
-    } catch (Exception e) {
-      e.printStackTrace();
-    }
-  }
-
-
-
-
-
 }

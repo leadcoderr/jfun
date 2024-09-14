@@ -92,6 +92,12 @@ yRz08Y7Dhpw=
 
 
 ```shell
-
 openssl x509 -req -days 365 -in csr.pem -signkey private_key.pem -out certificate.pem
 ```
+## Gen PKCS#8 keys
+```shell
+openssl genrsa -out private.pem 1024
+openssl rsa -in private.pem -pubout -outform PEM -out public_key.pem
+openssl pkcs8 -topk8 -inform PEM -in private.pem -out private_key.pem -nocrypt
+```
+
